@@ -513,3 +513,78 @@ local Button = TeleTab:CreateButton({
         tpTo(PUNCAK_HOREG)
     end,
 })
+
+-- ====== Players Tab (Dropdown + Dummy Kill) ======
+do
+    -- butuh: Players, LP, Window, Rayfield sudah ada di atas
+    local PlayerTab = Window:CreateTab("👥 Players", nil)
+
+    local currentOptions = {}
+    local indexToPlayer = {}
+    local selectedIndex = nil
+
+    local function refreshPlayers(dropdown)
+        currentOptions = {}
+        indexToPlayer = {}
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then
+                table.insert(currentOptions, string.format("%s (%d)", p.Name, p.UserId))
+                indexToPlayer[#currentOptions] = p
+            end
+        end
+
+        pcall(function() dropdown:SetOptions(currentOptions) end)
+    end
+
+    local PlayerDropdown = PlayerTab:CreateDropdown({
+        Name = "Pilih Player",
+        Options = {},
+        CurrentOption = nil,
+        Callback = function(_, idx)
+            selectedIndex = idx
+            local target = indexToPlayer[selectedIndex]
+            if target then
+                Rayfield:Notify({
+                    Title = "Target Dipilih",
+                    Content = string.format("-> %s (%d)", target.Name, target.UserId),
+                    Duration = 1.25
+                })
+            end
+        end,
+    })
+
+    refreshPlayers(PlayerDropdown)
+    Players.PlayerAdded:Connect(function() refreshPlayers(PlayerDropdown) end)
+    Players.PlayerRemoving:Connect(function()
+        refreshPlayers(PlayerDropdown)
+        selectedIndex = nil
+    end)
+
+    -- Tombol Kill (Set Health = 0)
+    PlayerTab:CreateButton({
+        Name = "Kill (set health 0)",
+        Callback = function()
+            if not selectedIndex then
+                Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
+                return
+            end
+            local target = indexToPlayer[selectedIndex]
+            if not (target and target.Parent and target.Character) then
+                Rayfield:Notify({ Title="Players", Content="Target tidak valid / sudah keluar.", Duration=1.2 })
+                return
+            end
+            local hum = target.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Health = 0
+                Rayfield:Notify({
+                    Title = "Kill",
+                    Content = "Health target di-set ke 0.",
+                    Duration = 1.5
+                })
+            else
+                Rayfield:Notify({ Title="Players", Content="Target tidak punya Humanoid.", Duration=1.2 })
+            end
+        end,
+    })
+end
