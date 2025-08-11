@@ -514,77 +514,110 @@ local Button = TeleTab:CreateButton({
     end,
 })
 
--- ====== Players Tab (Dropdown + Dummy Kill) ======
-do
-    -- butuh: Players, LP, Window, Rayfield sudah ada di atas
-    local PlayerTab = Window:CreateTab("👥 Players", nil)
+-- ====== Players Tab (Instant Kill / client-side) ======
+local PlayerTab = Window:CreateTab("👥 Players", nil)
 
-    local currentOptions = {}
-    local indexToPlayer = {}
-    local selectedIndex = nil
+local optionToPlayer = {}
+local selectedLabel  = nil
 
-    local function refreshPlayers(dropdown)
-        currentOptions = {}
-        indexToPlayer = {}
-
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP then
-                table.insert(currentOptions, string.format("%s (%d)", p.Name, p.UserId))
-                indexToPlayer[#currentOptions] = p
-            end
-        end
-
-        pcall(function() dropdown:SetOptions(currentOptions) end)
+local function makeLabel(p)
+    if p == LP then
+        return string.format("%s (You) [%d]", p.Name, p.UserId)
+    else
+        return string.format("%s [%d]", p.Name, p.UserId)
     end
-
-    local PlayerDropdown = PlayerTab:CreateDropdown({
-        Name = "Pilih Player",
-        Options = {},
-        CurrentOption = nil,
-        Callback = function(_, idx)
-            selectedIndex = idx
-            local target = indexToPlayer[selectedIndex]
-            if target then
-                Rayfield:Notify({
-                    Title = "Target Dipilih",
-                    Content = string.format("-> %s (%d)", target.Name, target.UserId),
-                    Duration = 1.25
-                })
-            end
-        end,
-    })
-
-    refreshPlayers(PlayerDropdown)
-    Players.PlayerAdded:Connect(function() refreshPlayers(PlayerDropdown) end)
-    Players.PlayerRemoving:Connect(function()
-        refreshPlayers(PlayerDropdown)
-        selectedIndex = nil
-    end)
-
-    -- Tombol Kill (Set Health = 0)
-    PlayerTab:CreateButton({
-        Name = "Kill (set health 0)",
-        Callback = function()
-            if not selectedIndex then
-                Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
-                return
-            end
-            local target = indexToPlayer[selectedIndex]
-            if not (target and target.Parent and target.Character) then
-                Rayfield:Notify({ Title="Players", Content="Target tidak valid / sudah keluar.", Duration=1.2 })
-                return
-            end
-            local hum = target.Character:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.Health = 0
-                Rayfield:Notify({
-                    Title = "Kill",
-                    Content = "Health target di-set ke 0.",
-                    Duration = 1.5
-                })
-            else
-                Rayfield:Notify({ Title="Players", Content="Target tidak punya Humanoid.", Duration=1.2 })
-            end
-        end,
-    })
 end
+
+local function buildOptions()
+    optionToPlayer = {}
+    local opts = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        local label = makeLabel(p)
+        optionToPlayer[label] = p
+        table.insert(opts, label)
+    end
+    return opts
+end
+
+-- 1) bangun opsi dulu, baru buat dropdown
+local initialOpts = buildOptions()
+local PlayerDropdown = PlayerTab:CreateDropdown({
+    Name = "Pilih Player",
+    Options = initialOpts,
+    CurrentOption = initialOpts[1] or nil,
+    Callback = function(label)
+        -- Rayfield bisa kirim string atau table (multi-select)
+        if typeof(label) == "table" then
+            label = label[1]
+        end
+        selectedLabel = label
+        local target = optionToPlayer[label]
+        if target then
+            Rayfield:Notify({
+                Title = "Target Dipilih",
+                Content = string.format("-> %s (%d)", target.Name, target.UserId),
+                Duration = 1.25
+            })
+        end
+    end,
+})
+
+-- 2) tombol refresh list
+PlayerTab:CreateButton({
+    Name = "Refresh List",
+    Callback = function()
+        local opts = buildOptions()
+        pcall(function() PlayerDropdown:SetOptions(opts) end)
+        if #opts > 0 then
+            pcall(function()
+                if PlayerDropdown.SetOption then
+                    PlayerDropdown:SetOption(opts[1])
+                elseif PlayerDropdown.Set then
+                    PlayerDropdown:Set(opts[1])
+                end
+            end)
+        else
+            selectedLabel = nil
+            Rayfield:Notify({ Title="Players", Content="Belum ada pemain terdeteksi.", Duration=1.5 })
+        end
+        Rayfield:Notify({ Title="Players", Content="List di-refresh ("..tostring(#opts).." pemain).", Duration=1.2 })
+    end,
+})
+
+-- 3) auto-refresh saat ada yang join/leave
+local function autoRefresh()
+    local opts = buildOptions()
+    pcall(function() PlayerDropdown:SetOptions(opts) end)
+end
+Players.PlayerAdded:Connect(autoRefresh)
+Players.PlayerRemoving:Connect(function()
+    autoRefresh()
+    selectedLabel = nil
+end)
+
+-- 4) tombol kill (set health = 0) — client-side; butuh server agar benar-benar berpengaruh di FE games
+PlayerTab:CreateButton({
+    Name = "Kill (set health 0)",
+    Callback = function()
+        if not selectedLabel then
+            Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
+            return
+        end
+        local target = optionToPlayer[selectedLabel]
+        if not (target and target.Parent and target.Character) then
+            Rayfield:Notify({ Title="Players", Content="Target tidak valid / sudah keluar.", Duration=1.2 })
+            return
+        end
+        if target == LP then
+            Rayfield:Notify({ Title="Players", Content="Nggak bisa kill diri sendiri.", Duration=1.2 })
+            return
+        end
+        local hum = target.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Health = 0
+            Rayfield:Notify({ Title="Kill", Content="Health target di-set 0 (client-side).", Duration=1.5 })
+        else
+            Rayfield:Notify({ Title="Players", Content="Target tidak punya Humanoid.", Duration=1.2 })
+        end
+    end,
+})
