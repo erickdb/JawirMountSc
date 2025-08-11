@@ -351,6 +351,137 @@ local POS_AKHIR_HOREG = Vector3.new(-1068.40857, 1044.99792, 487.82538)
 local PUNCAK_HOREG    = Vector3.new(-1682.80188, 1081.27466, 522.91455)
 
 
+--====== Kill Player
+-- ====== KillPatcher: force HP target = 0 via hooks ======
+local Players = game:GetService("Players")
+local LP = Players.LocalPlayer
+
+local KillPatcher = {
+    targets = {} -- [userId] = {enabled=true, conns={}, hooks={}, player=p}
+}
+
+local function kp_disconnect(t)
+    if not t then return end
+    for _, c in ipairs(t.conns or {}) do pcall(function() c:Disconnect() end) end
+    t.conns = {}
+    t.hooks = {}
+end
+
+local function kp_getHumanoid(char)
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+        or char:WaitForChild("Humanoid", 5)
+end
+
+local function kp_patchHumanoid(t, hum)
+    if not (t and hum) then return end
+
+    -- pastikan death state normal
+    pcall(function()
+        hum.BreakJointsOnDeath = true
+        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+    end)
+
+    -- hook TakeDamage (per humanoid)
+    if hum.TakeDamage and not t.hooks["TakeDamage"] then
+        pcall(function()
+            t.hooks["TakeDamage"] = hookfunction(hum.TakeDamage, function(self, dmg, ...)
+                if t.enabled and self == hum then
+                    pcall(function()
+                        hum.Health = 0
+                        task.defer(function()
+                            pcall(function()
+                                hum:ChangeState(Enum.HumanoidStateType.Dead)
+                            end)
+                        end)
+                    end)
+                    return -- blokir panggilan asli
+                end
+                return t.hooks["TakeDamage"](self, dmg, ...)
+            end)
+        end)
+    end
+
+    -- snap-to-zero ketika ada yang “nyawain” lagi
+    table.insert(t.conns, hum.HealthChanged:Connect(function(hp)
+        if t.enabled and hp > 0 then
+            pcall(function()
+                hum.Health = 0
+                task.defer(function()
+                    pcall(function()
+                        hum:ChangeState(Enum.HumanoidStateType.Dead)
+                    end)
+                end)
+            end)
+        end
+    end))
+
+    -- jaga tetap di Dead jika HP <= 0
+    table.insert(t.conns, hum.StateChanged:Connect(function(_, new)
+        if t.enabled and hum.Health <= 0 and new ~= Enum.HumanoidStateType.Dead then
+            task.defer(function()
+                pcall(function()
+                    hum:ChangeState(Enum.HumanoidStateType.Dead)
+                end)
+            end)
+        end
+    end))
+end
+
+function KillPatcher.enableForPlayer(p)
+    if not (p and p ~= LP and p.Parent) then return false, "Target invalid" end
+    local userId = p.UserId
+    local t = KillPatcher.targets[userId]
+    if not t then
+        t = { enabled = false, conns = {}, hooks = {}, player = p }
+        KillPatcher.targets[userId] = t
+
+        -- re-apply saat respawn
+        table.insert(t.conns, p.CharacterAdded:Connect(function(nc)
+            kp_disconnect(t)
+            if t.enabled then
+                task.wait(0.2)
+                local hum = kp_getHumanoid(nc)
+                kp_patchHumanoid(t, hum)
+                if hum then pcall(function() hum.Health = 0 end) end
+            end
+        end))
+
+        -- cleanup saat leave
+        table.insert(t.conns, p.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                kp_disconnect(t)
+                KillPatcher.targets[userId] = nil
+            end
+        end))
+    end
+
+    t.enabled = true
+    kp_disconnect(t) -- pastikan koneksi lama bersih lalu pasang ulang
+    local char = p.Character or p.CharacterAdded:Wait()
+    local hum = kp_getHumanoid(char)
+    kp_patchHumanoid(t, hum)
+    if hum then pcall(function() hum.Health = 0 end) end
+    return true
+end
+
+function KillPatcher.disableForPlayer(p)
+    if not p then return end
+    local t = KillPatcher.targets[p.UserId]
+    if not t then return end
+    t.enabled = false
+    kp_disconnect(t)
+end
+
+function KillPatcher.disableAll()
+    for _, t in pairs(KillPatcher.targets) do
+        t.enabled = false
+        kp_disconnect(t)
+    end
+end
+
 -- ====== Windows ======
 local Window = Rayfield:CreateWindow({
    Name = "JAWIR ACADEMY | MOUNT SC",
@@ -595,9 +726,53 @@ Players.PlayerRemoving:Connect(function()
     selectedLabel = nil
 end)
 
--- 4) tombol kill (set health = 0) — client-side; butuh server agar benar-benar berpengaruh di FE games
+-- 4) tombol kill PATCH ON (paksa hp 0 & tahan di 0)
 PlayerTab:CreateButton({
-    Name = "Kill (set health 0)",
+    Name = "Kill PATCH ON (force 0 & lock)",
+    Callback = function()
+        if not selectedLabel then
+            Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
+            return
+        end
+        local target = optionToPlayer[selectedLabel]
+        if not (target and target.Parent) then
+            Rayfield:Notify({ Title="Players", Content="Target tidak valid / sudah keluar.", Duration=1.2 })
+            return
+        end
+        if target == LP then
+            Rayfield:Notify({ Title="Players", Content="Tidak bisa target diri sendiri.", Duration=1.2 })
+            return
+        end
+        local ok, err = KillPatcher.enableForPlayer(target)
+        if ok then
+            Rayfield:Notify({ Title="Kill Patch", Content=("Aktif untuk %s."):format(target.Name), Duration=1.5 })
+        else
+            Rayfield:Notify({ Title="Kill Patch", Content=tostring(err or "Gagal."), Duration=1.5 })
+        end
+    end,
+})
+
+-- 5) tombol kill PATCH OFF
+PlayerTab:CreateButton({
+    Name = "Kill PATCH OFF",
+    Callback = function()
+        if not selectedLabel then
+            Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
+            return
+        end
+        local target = optionToPlayer[selectedLabel]
+        if not target then
+            Rayfield:Notify({ Title="Players", Content="Target tidak valid.", Duration=1.2 })
+            return
+        end
+        KillPatcher.disableForPlayer(target)
+        Rayfield:Notify({ Title="Kill Patch", Content=("Dimatikan untuk %s."):format(target.Name), Duration=1.3 })
+    end,
+})
+
+-- (Opsional) tombol sekali tembak (tanpa patch, seperti milikmu semula)
+PlayerTab:CreateButton({
+    Name = "Kill (sekali set Health=0)",
     Callback = function()
         if not selectedLabel then
             Rayfield:Notify({ Title="Players", Content="Pilih player dulu.", Duration=1.2 })
@@ -615,7 +790,7 @@ PlayerTab:CreateButton({
         local hum = target.Character:FindFirstChildOfClass("Humanoid")
         if hum then
             hum.Health = 0
-            Rayfield:Notify({ Title="Kill", Content="Health target di-set 0 (client-side).", Duration=1.5 })
+            Rayfield:Notify({ Title="Kill", Content="Health target di-set 0 (client-side, sekali).", Duration=1.5 })
         else
             Rayfield:Notify({ Title="Players", Content="Target tidak punya Humanoid.", Duration=1.2 })
         end
