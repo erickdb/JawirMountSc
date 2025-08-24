@@ -657,3 +657,118 @@ PlayerTab:CreateButton({
         end
     end,
 })
+
+
+-- ====== Midnight Chasers ======
+local MidnightTab = Window:CreateTab("🚗 Midnight Chasers", nil)
+
+local Section = MidnightTab:CreateSection("Main")
+
+-- Variabel biar gampang ON/OFF
+local npcRoot = workspace:FindFirstChild("NPCVehicles")
+local vehiclesFolder = npcRoot and (npcRoot:FindFirstChild("Vehicles") or npcRoot)
+
+local ghostConn, enforceConn
+
+local function ghostifyInstance(inst)
+    for _, obj in ipairs(inst:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            obj.LocalTransparencyModifier = 1
+            obj.Transparency = 1
+            obj.CanCollide = false
+            obj.CanTouch = false
+            obj.CanQuery = false
+            obj.Massless = true
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 1
+        elseif obj:IsA("Highlight") then
+            obj.Enabled = false
+        elseif obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("ParticleEmitter") then
+            obj.Enabled = false
+        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            obj.Enabled = false
+        end
+    end
+end
+
+local function ghostAll()
+    if not vehiclesFolder then return end
+    ghostifyInstance(vehiclesFolder)
+    ghostConn = vehiclesFolder.DescendantAdded:Connect(function(obj)
+        if obj:IsA("BasePart") then
+            obj.LocalTransparencyModifier = 1
+            obj.Transparency = 1
+            obj.CanCollide = false
+            obj.CanTouch = false
+            obj.CanQuery = false
+            obj.Massless = true
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 1
+        elseif obj:IsA("Highlight") then
+            obj.Enabled = false
+        elseif obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("ParticleEmitter") then
+            obj.Enabled = false
+        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            obj.Enabled = false
+        end
+    end)
+
+    enforceConn = RunService.Heartbeat:Connect(function()
+        for _, part in ipairs(vehiclesFolder:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.LocalTransparencyModifier = 1
+                part.Transparency = 1
+                part.CanCollide = false
+                part.CanTouch = false
+                part.CanQuery = false
+                part.Massless = true
+            end
+        end
+    end)
+end
+
+local function unghostAll()
+    if ghostConn then ghostConn:Disconnect() ghostConn = nil end
+    if enforceConn then enforceConn:Disconnect() enforceConn = nil end
+    if not vehiclesFolder then return end
+    for _, obj in ipairs(vehiclesFolder:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            obj.LocalTransparencyModifier = 0
+            obj.Transparency = 0
+            obj.CanCollide = true
+            obj.CanTouch = true
+            obj.CanQuery = true
+            obj.Massless = false
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 0
+        elseif obj:IsA("Highlight") then
+            obj.Enabled = true
+        elseif obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("ParticleEmitter") then
+            obj.Enabled = true
+        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            obj.Enabled = true
+        end
+    end
+end
+
+local Toggle = MidnightTab:CreateToggle({
+   Name = "Hilangkan Mobil NPC",
+   CurrentValue = false,
+   Callback = function(v)
+        if v then
+            ghostAll()
+            Rayfield:Notify({
+                Title = "NPC Vehicles",
+                Content = "Semua mobil NPC berhasil dihilangkan (ghosted).",
+                Duration = 2
+            })
+        else
+            unghostAll()
+            Rayfield:Notify({
+                Title = "NPC Vehicles",
+                Content = "Semua mobil NPC berhasil ditampilkan kembali.",
+                Duration = 2
+            })
+        end
+    end,
+})
