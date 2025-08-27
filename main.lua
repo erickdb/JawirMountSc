@@ -772,3 +772,94 @@ local Toggle = MidnightTab:CreateToggle({
         end
     end,
 })
+
+-- ====== Variabel Car Speed ======
+local carSpeedValue = 50 -- default slider
+local carSpeedEnabled = false
+local defaultCarSpeed = 50
+
+-- fungsi ambil mobil player
+local function getPlayerCar()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:find(LP.Name) and obj:FindFirstChildWhichIsA("VehicleSeat") then
+            return obj
+        end
+    end
+    return nil
+end
+
+-- fungsi apply speed
+local function applyCarSpeed()
+    if not carSpeedEnabled then return end
+    local car = getPlayerCar()
+    if car then
+        local seat = car:FindFirstChildWhichIsA("VehicleSeat")
+        if seat then
+            seat.MaxSpeed = carSpeedValue
+        end
+    end
+end
+
+-- Slider buat atur nilai speed
+local CarSpeedSlider = MidnightTab:CreateSlider({
+    Name = "Car Speed",
+    Range = {5, 200}, -- bisa diperbesar
+    Increment = 1,
+    Suffix = "stud/s",
+    CurrentValue = carSpeedValue,
+    Callback = function(v)
+        carSpeedValue = v
+        if carSpeedEnabled then
+            applyCarSpeed()
+            Rayfield:Notify({
+                Title = "Car Speed",
+                Content = "Kecepatan mobil diset ke " .. tostring(v),
+                Duration = 1
+            })
+        end
+    end,
+})
+
+-- Toggle buat aktif/nonaktif
+local CarSpeedToggle = MidnightTab:CreateToggle({
+   Name = "Car Speed Toggle",
+   CurrentValue = false,
+   Callback = function(v)
+        carSpeedEnabled = v
+        local car = getPlayerCar()
+        if car then
+            local seat = car:FindFirstChildWhichIsA("VehicleSeat")
+            if seat then
+                if v then
+                    defaultCarSpeed = seat.MaxSpeed
+                    seat.MaxSpeed = carSpeedValue
+                    Rayfield:Notify({
+                        Title = "Car Speed",
+                        Content = "Custom Car Speed Aktif",
+                        Duration = 1.25
+                    })
+                else
+                    seat.MaxSpeed = defaultCarSpeed
+                    Rayfield:Notify({
+                        Title = "Car Speed",
+                        Content = "Custom Car Speed Dimatikan",
+                        Duration = 1.25
+                    })
+                end
+            end
+        else
+            Rayfield:Notify({
+                Title = "Car Speed",
+                Content = "Mobilmu tidak ditemukan!",
+                Duration = 2
+            })
+        end
+   end,
+})
+
+-- optional: auto enforce setiap detik biar ga ditimpa script game
+RunService.Heartbeat:Connect(function()
+    if carSpeedEnabled then
+        applyCarSpeed()
+    end
+end)
