@@ -859,12 +859,3 @@ local CarSpeedToggle = MidnightTab:CreateToggle({
         end
    end,
 })
-
--- auto enforce tiap 0.5 detik biar smooth, ga spam setiap frame
-task.spawn(function()
-    while task.wait(0.5) do
-        if carSpeedEnabled then
-            applyCarSpeed()
-        end
-    end
-end)
