@@ -788,14 +788,17 @@ local function getPlayerCar()
     return nil
 end
 
--- fungsi apply speed
+-- fungsi apply speed (smooth, cek dulu biar ga bentrok)
 local function applyCarSpeed()
     if not carSpeedEnabled then return end
     local car = getPlayerCar()
     if car then
         local seat = car:FindFirstChildWhichIsA("VehicleSeat")
         if seat then
-            seat.MaxSpeed = carSpeedValue
+            -- kalau beda baru update (biar ga spam nulis nilai yg sama -> bikin lag/patah2)
+            if seat.MaxSpeed ~= carSpeedValue then
+                seat.MaxSpeed = carSpeedValue
+            end
         end
     end
 end
@@ -803,7 +806,7 @@ end
 -- Slider buat atur nilai speed
 local CarSpeedSlider = MidnightTab:CreateSlider({
     Name = "Car Speed",
-    Range = {5, 200}, -- bisa diperbesar
+    Range = {5, 500}, -- diperbesar biar lebih fleksibel
     Increment = 1,
     Suffix = "stud/s",
     CurrentValue = carSpeedValue,
@@ -857,9 +860,11 @@ local CarSpeedToggle = MidnightTab:CreateToggle({
    end,
 })
 
--- optional: auto enforce setiap detik biar ga ditimpa script game
-RunService.Heartbeat:Connect(function()
-    if carSpeedEnabled then
-        applyCarSpeed()
+-- auto enforce tiap 0.5 detik biar smooth, ga spam setiap frame
+task.spawn(function()
+    while task.wait(0.5) do
+        if carSpeedEnabled then
+            applyCarSpeed()
+        end
     end
 end)
