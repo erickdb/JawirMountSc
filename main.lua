@@ -27,11 +27,22 @@ local function getHumanoid(char)
 end
 
 local function getRoot(char)
-    char = char or getChar()
-    return char:FindFirstChild("HumanoidRootPart")
+    if not char then return nil end
+    
+    -- coba cari root langsung
+    local root = char:FindFirstChild("HumanoidRootPart")
         or char:FindFirstChild("LowerTorso")
         or char:FindFirstChild("Torso")
-        or char:FindFirstChildWhichIsA("BasePart")
+
+    -- kalau belum ketemu, tunggu sebentar (max 5 detik)
+    if not root then
+        root = char:WaitForChild("HumanoidRootPart", 5)
+            or char:FindFirstChild("LowerTorso")
+            or char:FindFirstChild("Torso")
+    end
+
+    -- fallback terakhir: ambil BasePart apapun
+    return root or char:FindFirstChildWhichIsA("BasePart")
 end
 
 local function applyMovement()
@@ -314,7 +325,7 @@ local function tpTo(v3)
     local plr  = game.Players.LocalPlayer
     local char = plr.Character or plr.CharacterAdded:Wait()
     local hum  = char:FindFirstChildOfClass("Humanoid")
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local root = getRoot(char)
     if not (hum and root) then return end
 
     pcall(function() hum.Sit = false end)
@@ -324,28 +335,6 @@ end
 -- === koordinat Horeg ===
 local POS_AKHIR_HOREG = Vector3.new(-1068.40857, 1044.99792, 487.82538)
 local PUNCAK_HOREG    = Vector3.new(-1682.80188, 1081.27466, 522.91455)
-
--- Fungsi teleport
-local function teleportPlayerToMe(targetName)
-    local localPlayer = game.Players.LocalPlayer
-    local target = game.Players:FindFirstChild(targetName)
-
-    if localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") and
-       target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-
-        local myHRP = localPlayer.Character.HumanoidRootPart
-        local targetHRP = target.Character.HumanoidRootPart
-
-        -- Teleport target ke posisi kita
-        targetHRP.CFrame = myHRP.CFrame + Vector3.new(2, 0, 0) -- offset biar ga nempel
-    else
-        Rayfield:Notify({
-            Title = "Error",
-            Content = "Player tidak valid atau HumanoidRootPart tidak ditemukan",
-            Duration = 3
-        })
-    end
-end
 
 
 -- ====== Windows ======
@@ -614,50 +603,24 @@ PlayerTab:CreateButton({
             Rayfield:Notify({ Title="Players", Content="Tidak ada pemain yang dipilih.", Duration=1.5 })
             return
         end
+
         local target = optionToPlayer[label]
         if not target or target == LP then
             Rayfield:Notify({ Title="Players", Content="Tidak bisa teleport ke diri sendiri.", Duration=1.5 })
             return
         end
+
+        -- tunggu sampai karakter bener-bener siap
         local char = target.Character or target.CharacterAdded:Wait()
         local root = getRoot(char)
         if root then
             tpTo(root.Position)
             Rayfield:Notify({ Title="Teleport", Content="Berhasil teleport ke "..label, Duration=1.5 })
         else
-            Rayfield:Notify({ Title="Teleport", Content="Gagal teleport, karakter tidak ditemukan.", Duration=1.5 })
+            Rayfield:Notify({ Title="Teleport", Content="Gagal teleport, root tidak ditemukan.", Duration=1.5 })
         end
     end,
 })
-
--- teleport player to me
-PlayerTab:CreateButton({
-    Name = "Teleport Player To Me",
-    Callback = function()
-        local label = getSelected()
-        if not label then
-            Rayfield:Notify({ Title="Players", Content="Tidak ada pemain yang dipilih.", Duration=1.5 })
-            return
-        end
-        local target = optionToPlayer[label]
-        if not target or target == LP then
-            Rayfield:Notify({ Title="Players", Content="Tidak bisa teleport ke diri sendiri.", Duration=1.5 })
-            return
-        end
-        local myChar = LP.Character or LP.CharacterAdded:Wait()
-        local myRoot = getRoot(myChar)
-        local char = target.Character or target.CharacterAdded:Wait()
-        local root = getRoot(char)
-
-        if myRoot and root then
-            root.CFrame = myRoot.CFrame * CFrame.new(2, 0, 0) -- offset biar ga nempel
-            Rayfield:Notify({ Title="Teleport", Content="Berhasil teleport "..label.." ke kamu", Duration=1.5 })
-        else
-            Rayfield:Notify({ Title="Teleport", Content="Gagal teleport, karakter tidak ditemukan.", Duration=1.5 })
-        end
-    end,
-})
-
 
 -- ====== Midnight Chasers ======
 local MidnightTab = Window:CreateTab("🚗 Midnight Chasers", nil)
